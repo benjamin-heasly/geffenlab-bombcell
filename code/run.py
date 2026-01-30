@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 from typing import Optional, Sequence
 import logging
 from pathlib import Path
+import json
 
 
 import bombcell as bc
@@ -29,52 +30,70 @@ def load_phy_params(
 
 
 def capsule_main(
-    analysis_path: Path,
+    phy_path: Path,
     phy_pattern: str,
-    results_path: Path,
-    n_jobs: int,
+    bombcell_params_json: str,
+    results_path: Path
 ):
-    logging.info(f"Searching for params.py in: {analysis_path}.")
+    user_bombcell_params = {}
+    if bombcell_params_json is not None:
+        if bombcell_params_json.endswith(".json"):
+            logging.info(f"Loading bombcell params from JSON file: {bombcell_params_json}")
+            with open(bombcell_params_json, "r") as f:
+                user_bombcell_params = json.load(f)
+        else:
+            logging.info(f"Loading bombcell params JSON text.")
+            user_bombcell_params = json.loads(bombcell_params_json)
+
+    logging.info(f"Searching for params.py(s) within: {phy_path}.")
     logging.info(f"Searching with pattern: {phy_pattern}.")
 
-    params_py_matches = list(analysis_path.glob(phy_pattern))
+    params_py_matches = list(phy_path.glob(phy_pattern))
     logging.info(f"Found {len(params_py_matches)} params.py matches: {params_py_matches}")
-    params_py = params_py_matches[0]
-    phy_params = load_phy_params(params_py)
+    if not params_py_matches:
+        raise ValueError("Found no matches for params.py.")
 
-    # Configure Bombcell parameters.
-    # We start with the defaults.
-    # We specify what we know from the given params.py and it's surrounding Phy dir.
-    # TODO: we also apply user values from a JSON file.
-    phy_dir = params_py.parent
-    bc_params = bc.get_default_parameters(
-        phy_dir.as_posix(),
-        raw_file=None,
-        meta_file=None
-    )
+    for params_py in params_py_matches:
+        phy_params = load_phy_params(params_py)
 
-    figures_path = Path(results_path, "figures")
-    bc_params['savePlots'] = True
-    bc_params['plotsSaveDir'] = figures_path.as_posix()
-    bc_params['computeDistanceMetrics'] = True
-    bc_params['ephys_sample_rate'] = phy_params['sample_rate']
-    bc_params['nChannels'] = phy_params['n_channels_dat']
-    bc_params['nSyncChannels'] = 0
+        # Configure Bombcell parameters.
+        # We start with the defaults.
+        # We add what we know from the Phy params.py.
+        # We add user-supplied values and overrides, if any.
+        phy_dir = params_py.parent
+        bombcell_params = bc.get_default_parameters(
+            phy_dir.as_posix(),
+            raw_file=None,
+            meta_file=None
+        )
 
-    logging.info("Using the following Bombcell params:")
-    for k, v in bc_params.items():
-        logging.info(f"  {k}: {v}")
+        figures_path = Path(results_path, "figures")
+        bombcell_params['savePlots'] = True
+        bombcell_params['plotsSaveDir'] = figures_path.as_posix()
+        bombcell_params['computeDistanceMetrics'] = True
+        bombcell_params['ephys_sample_rate'] = phy_params['sample_rate']
+        bombcell_params['nChannels'] = phy_params['n_channels_dat']
+        bombcell_params['nSyncChannels'] = 0
 
-    logging.info("Running Bombcell:")
-    bc.run_bombcell(
-        phy_dir,
-        results_path,
-        bc_params,
-        return_figures=False,
-        save_figures=True
-    )
+        if user_bombcell_params:
+            logging.info(f"Setting {len(user_bombcell_params)} user-supplied Bombcell params.")
+            for name, value in user_bombcell_params.items():
+                bombcell_params[name] = value
 
-    logging.info("OK\n")
+        logging.info("Using the following Bombcell params:")
+        for name, value in bombcell_params.items():
+            logging.info(f"  {name}: {value}")
+
+        logging.info("Running Bombcell:")
+        bc.run_bombcell(
+            phy_dir,
+            results_path,
+            bombcell_params,
+            return_figures=False,
+            save_figures=True
+        )
+
+        logging.info("OK\n")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -83,16 +102,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = ArgumentParser(description="Export ecephys sorting resluts to Phy.")
 
     parser.add_argument(
-        "--analysis-dir", "-a",
+        "--phy-root", "-P",
         type=str,
         help="Where to search for previously exported Phy data. (default: %(default)s)",
-        default="/analysis"
+        default="/phy_root"
     )
     parser.add_argument(
         "--phy-pattern", "-p",
         type=str,
-        help="Glob pattern used to search ANALYSIS_DIR for a Phy params.py. (default: %(default)s)",
-        default="*/*/exported/phy/*/params.py"
+        help="Glob pattern used to search within PHY_ROOT for one or more Phy params.py. (default: %(default)s)",
+        default="phy/*/params.py"
+    )
+    parser.add_argument(
+        "--bombcell-params-json", "-b",
+        type=str,
+        help="JSON file name or formatted text with Bombcell parameters. (default: %(default)s)",
+        default=None
     )
     parser.add_argument(
         "--results-dir", "-r",
@@ -100,22 +125,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Where to write output result files. (default: %(default)s)",
         default="/results"
     )
-    parser.add_argument(
-        "--n-jobs", "-n",
-        type=int,
-        help="Number of jobs to use for parallel processing -- -1 means one job per CPU core. (default: %(default)s)",
-        default=-1
-    )
 
     cli_args = parser.parse_args(argv)
-    analysis_path = Path(cli_args.analysis_dir)
+    phy_path = Path(cli_args.phy_root)
     results_path = Path(cli_args.results_dir)
     try:
         capsule_main(
-            analysis_path,
+            phy_path,
             cli_args.phy_pattern,
-            results_path,
-            cli_args.n_jobs,
+            cli_args.bombcell_params_json,
+            results_path
         )
     except:
         logging.error("Error running bombcell.", exc_info=True)

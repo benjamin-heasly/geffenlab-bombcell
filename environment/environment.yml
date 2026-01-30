@@ -7,5 +7,6 @@ dependencies:
   - pip=25.2
   - pip:
     - pandas==2.3.3
+    #- bombcell==0.72
     - git+https://github.com/benjamin-heasly/bombcell#subdirectory=py_bombcell
     - numpy==2.2.6
