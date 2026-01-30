@@ -67,9 +67,10 @@ def capsule_main(
             meta_file=None
         )
 
-        figures_path = Path(results_path, "figures")
+        probe_results_path = Path(results_path, phy_dir.name)
+        probe_figures_path = Path(probe_results_path, "figures")
         bombcell_params['savePlots'] = True
-        bombcell_params['plotsSaveDir'] = figures_path.as_posix()
+        bombcell_params['plotsSaveDir'] = probe_figures_path.as_posix()
         bombcell_params['computeDistanceMetrics'] = True
         bombcell_params['ephys_sample_rate'] = phy_params['sample_rate']
         bombcell_params['nChannels'] = phy_params['n_channels_dat']
@@ -87,7 +88,7 @@ def capsule_main(
         logging.info("Running Bombcell:")
         bc.run_bombcell(
             phy_dir,
-            results_path,
+            probe_results_path,
             bombcell_params,
             return_figures=False,
             save_figures=True
