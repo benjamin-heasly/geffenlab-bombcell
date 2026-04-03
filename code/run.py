@@ -5,9 +5,9 @@ import logging
 from pathlib import Path
 import json
 
-
 import bombcell as bc
 
+from densify import densify_templates
 
 def set_up_logging():
     logging.basicConfig(
@@ -54,13 +54,16 @@ def capsule_main(
         raise ValueError("Found no matches for params.py.")
 
     for params_py in params_py_matches:
-        phy_params = load_phy_params(params_py)
+        phy_dir = params_py.parent
+
+        # Convert sparse template representation to dense, if needed.
+        densify_templates(phy_dir)
 
         # Configure Bombcell parameters.
         # We start with the defaults.
         # We add what we know from the Phy params.py.
         # We add user-supplied values and overrides, if any.
-        phy_dir = params_py.parent
+        phy_params = load_phy_params(params_py)
         bombcell_params = bc.get_default_parameters(
             phy_dir.as_posix(),
             raw_file=None,
