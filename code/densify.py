@@ -1,6 +1,6 @@
 from pathlib import Path
 import logging
-from shutil import copy2
+from shutil import copy2, move
 
 import numpy as np
 
@@ -19,19 +19,26 @@ def densify_templates(
     # Confirm we have templates in a sparse form.
     template_ind_npy = Path(phy_dir, "template_ind.npy")
     if not template_ind_npy.exists():
-        logging.info(f"Templates appear to be dense already (not spares), file not found: {template_ind_npy.name}")
+        logging.info(f"Templates appear to be dense already (not sparse), file not found: {template_ind_npy.name}")
+        return
 
-    # Save a copy of the original, sparse templates.npy, from eg Spike Interface.
+    # Move the sparse templates_ind.npy out of the way to not confuse eg. Phy.
+    templates_ind_backup_npy = Path(phy_dir, "templates_ind_backup.npy")
+    if not templates_ind_backup_npy.exists():
+        logging.info(f"Moving the original {template_ind_npy.name} to {templates_ind_backup_npy}")
+        move(template_ind_npy, templates_ind_backup_npy)
+
+    # Save a copy of the sparse templates.npy from eg Spike Interface.
     templates_npy = Path(phy_dir, "templates.npy")
-    templates_original_npy = Path(phy_dir, "templates_backup.npy")
-    if not templates_original_npy.exists():
-        logging.info(f"Save a backup of the original {templates_npy.name}: {templates_original_npy}")
-        copy2(templates_npy, templates_original_npy)
+    templates_backup_npy = Path(phy_dir, "templates_backup.npy")
+    if not templates_backup_npy.exists():
+        logging.info(f"Save a backup of the original {templates_npy.name}: {templates_backup_npy}")
+        copy2(templates_npy, templates_backup_npy)
 
     # Sparse templates.npy has shape (num_units, num_samples, max_num_channels).
     # The max_num_channels dimension is sparse, with raw channel indices stored separately in template_ind.npy.
-    templates = np.load(templates_original_npy)
-    template_ind = np.load(template_ind_npy)
+    templates = np.load(templates_backup_npy)
+    template_ind = np.load(templates_ind_backup_npy)
 
     # Reconstruct a full matrix with shape (num_units, num_samples, num_channels).
     num_units = templates.shape[0]
