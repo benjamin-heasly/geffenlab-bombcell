@@ -2,11 +2,10 @@
 FROM ubuntu:22.04
 
 # Install wget and https certificate info, which we'll use to install things, below.
-# Install git so Conda can install Bombcell fork from GitHub.
 # Clean up cache and temp files along the way.
 RUN export DEBIAN_FRONTEND=noninteractive \
     && apt update \
-    && apt install --no-install-recommends --yes wget ca-certificates git \
+    && apt install --no-install-recommends --yes wget ca-certificates \
     && apt-get clean \
     && apt-get autoremove \
     && rm -rf /var/lib/apt/lists/*
@@ -20,6 +19,17 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py311_24.5.0-0-Linux-x86
 COPY environment/environment.yml /opt/environment/environment.yml
 RUN /opt/miniconda/bin/conda env create -f /opt/environment/environment.yml
 
-# Include all of our code/* in /opt/code
-COPY code /opt/code
-COPY code/conda_run /usr/local/bin/conda_run
+# Give Matplotlib a writeable, user-independent cache directory.
+# https://matplotlib.org/stable/install/environment_variables_faq.html
+ENV MPLCONFIGDIR=/tmp/matplotlib
+RUN mkdir $MPLCONFIGDIR && chmod a+w $MPLCONFIGDIR
+
+# Give numba a place to write JIT-compiled functions.
+ENV NUMBA_CACHE_DIR=/tmp/numba
+
+# Create writable cache directories.
+RUN mkdir /.cachecache && chmod a+rw /.cachecache
+RUN mkdir /.bombcell && chmod a+rw /.bombcell
+
+COPY code/run_bombcell.py /opt/code/run_bombcell.py
+ENTRYPOINT ["/opt/miniconda/bin/conda", "run", "--no-capture-output", "-n", "bombcell", "python", "/opt/code/run_bombcell.py"]
